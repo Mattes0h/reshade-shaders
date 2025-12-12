@@ -1,3 +1,7 @@
+/*
+ * SPDX-License-Identifier: CC0-1.0
+ */
+
 #pragma once
 
 #if !defined(__RESHADE__) || __RESHADE__ < 30000
@@ -10,30 +14,40 @@
 #ifndef RESHADE_DEPTH_INPUT_IS_REVERSED
 	#define RESHADE_DEPTH_INPUT_IS_REVERSED 1
 #endif
+#ifndef RESHADE_DEPTH_INPUT_IS_MIRRORED
+        #define RESHADE_DEPTH_INPUT_IS_MIRRORED 0
+#endif
 #ifndef RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
 	#define RESHADE_DEPTH_INPUT_IS_LOGARITHMIC 0
 #endif
-//RESHADE_DEPTH_MULTIPLER only useful for emulators, keep at 1 for standard operation
+
 #ifndef RESHADE_DEPTH_MULTIPLIER
 	#define RESHADE_DEPTH_MULTIPLIER 1
 #endif
 #ifndef RESHADE_DEPTH_LINEARIZATION_FAR_PLANE
 	#define RESHADE_DEPTH_LINEARIZATION_FAR_PLANE 1000.0
 #endif
-//above 1 expands, below 1 contracts, 1 is no scaling on axis
+
+// Above 1 expands coordinates, below 1 contracts and 1 is equal to no scaling on any axis
 #ifndef RESHADE_DEPTH_INPUT_Y_SCALE
 	#define RESHADE_DEPTH_INPUT_Y_SCALE 1
 #endif
 #ifndef RESHADE_DEPTH_INPUT_X_SCALE
 	#define RESHADE_DEPTH_INPUT_X_SCALE 1
 #endif
-//the Offset value to add to the Y, Positive numbers = Up, Negative numbers = Down
+// An offset to add to the Y coordinate, (+) = move up, (-) = move down
 #ifndef RESHADE_DEPTH_INPUT_Y_OFFSET
 	#define RESHADE_DEPTH_INPUT_Y_OFFSET 0
 #endif
-//the Offset value to add to the X, Positive numbers = Right, Negative numbers = Left
+#ifndef RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET
+	#define RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET 0
+#endif
+// An offset to add to the X coordinate, (+) = move right, (-) = move left
 #ifndef RESHADE_DEPTH_INPUT_X_OFFSET
 	#define RESHADE_DEPTH_INPUT_X_OFFSET 0
+#endif
+#ifndef RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET
+	#define RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET 0
 #endif
 
 #define BUFFER_PIXEL_SIZE float2(BUFFER_RCP_WIDTH, BUFFER_RCP_HEIGHT)
@@ -69,11 +83,22 @@ namespace ReShade
 #if RESHADE_DEPTH_INPUT_IS_UPSIDE_DOWN
 		texcoord.y = 1.0 - texcoord.y;
 #endif
-		texcoord.x /= RESHADE_DEPTH_INPUT_X_SCALE; //above 1 expands, below 1 contracts
-		texcoord.y /= RESHADE_DEPTH_INPUT_Y_SCALE; //above 1 expands, below 1 contracts
-		texcoord.x -= (RESHADE_DEPTH_INPUT_X_OFFSET/2.000000001); //halves the input value before applying
-		texcoord.y += (RESHADE_DEPTH_INPUT_Y_OFFSET/2.000000001); //halves the input value before applying, adds instead of minusing
-		float depth = tex2Dlod(DepthBuffer, float4(texcoord, 0, 0)).x * RESHADE_DEPTH_MULTIPLIER; //RESHADE_DEPTH_MULTIPLER only useful for emulators, keep at 1 for standard operation
+#if RESHADE_DEPTH_INPUT_IS_MIRRORED
+                texcoord.x = 1.0 - texcoord.x;
+#endif
+		texcoord.x /= RESHADE_DEPTH_INPUT_X_SCALE;
+		texcoord.y /= RESHADE_DEPTH_INPUT_Y_SCALE;
+#if RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET
+		texcoord.x -= RESHADE_DEPTH_INPUT_X_PIXEL_OFFSET * BUFFER_RCP_WIDTH;
+#else // Do not check RESHADE_DEPTH_INPUT_X_OFFSET, since it may be a decimal number, which the preprocessor cannot handle
+		texcoord.x -= RESHADE_DEPTH_INPUT_X_OFFSET / 2.000000001;
+#endif
+#if RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET
+		texcoord.y += RESHADE_DEPTH_INPUT_Y_PIXEL_OFFSET * BUFFER_RCP_HEIGHT;
+#else
+		texcoord.y += RESHADE_DEPTH_INPUT_Y_OFFSET / 2.000000001;
+#endif
+		float depth = tex2Dlod(DepthBuffer, float4(texcoord, 0, 0)).x * RESHADE_DEPTH_MULTIPLIER;
 
 #if RESHADE_DEPTH_INPUT_IS_LOGARITHMIC
 		const float C = 0.01;
@@ -90,6 +115,7 @@ namespace ReShade
 }
 
 // Vertex shader generating a triangle covering the entire screen
+// See also https://www.reddit.com/r/gamedev/comments/2j17wk/a_slightly_faster_bufferless_vertex_shader_trick/
 void PostProcessVS(in uint id : SV_VertexID, out float4 position : SV_Position, out float2 texcoord : TEXCOORD)
 {
 	texcoord.x = (id == 2) ? 2.0 : 0.0;
